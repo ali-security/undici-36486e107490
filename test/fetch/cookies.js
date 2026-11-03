@@ -12,6 +12,8 @@ const isMacOSNode20CI = process.platform === 'darwin' &&
   Number(process.versions.node.split('.')[0]) === 20 &&
   process.env.CI
 
+const loopback = '127.0.0.1'
+
 describe('cookies', () => {
   let server
 
@@ -24,7 +26,7 @@ describe('cookies', () => {
       res.end(req.headers.cookie)
     })
 
-    return once(server.listen(0), 'listening')
+    return once(server.listen(0, loopback), 'listening')
   })
 
   after(() => {
@@ -38,12 +40,12 @@ describe('cookies', () => {
     const query = qsStringify({
       'set-cookie': 'name=value; Domain=example.com'
     })
-    const response = await fetch(`http://localhost:${server.address().port}?${query}`)
+    const response = await fetch(`http://${loopback}:${server.address().port}?${query}`)
 
     t.assert.strictEqual(response.headers.get('set-cookie'), 'name=value; Domain=example.com')
     t.assert.strictEqual(await response.text(), '')
 
-    const response2 = await fetch(`http://localhost:${server.address().port}?${query}`, {
+    const response2 = await fetch(`http://${loopback}:${server.address().port}?${query}`, {
       credentials: 'include'
     })
 
@@ -59,7 +61,7 @@ describe('cookies', () => {
     ]
 
     for (const headers of headersInit) {
-      const response = await fetch(`http://localhost:${server.address().port}`, { headers })
+      const response = await fetch(`http://${loopback}:${server.address().port}`, { headers })
       const text = await response.text()
       t.assert.strictEqual(text, 'value')
     }
@@ -68,7 +70,7 @@ describe('cookies', () => {
   test('Cookie header is delimited with a semicolon rather than a comma - issue #1905', {
     skip: isMacOSNode20CI
   }, async (t) => {
-    const response = await fetch(`http://localhost:${server.address().port}`, {
+    const response = await fetch(`http://${loopback}:${server.address().port}`, {
       headers: [
         ['cookie', 'FOO=lorem-ipsum-dolor-sit-amet'],
         ['cookie', 'BAR=the-quick-brown-fox']
@@ -91,17 +93,22 @@ describe('cookies', () => {
       stream.end('test')
     })
 
-    await once(server.listen(0), 'listening')
+    await once(server.listen(0, loopback), 'listening')
 
-    const client = new Client(`https://localhost:${server.address().port}`, {
+    const client = new Client(`https://${loopback}:${server.address().port}`, {
       connect: {
         rejectUnauthorized: false
       },
       allowH2: true
     })
 
+    t.after(async () => {
+      await client.close()
+      await new Promise((resolve, reject) => server.close(err => err ? reject(err) : resolve()))
+    })
+
     const response = await fetch(
-      `https://localhost:${server.address().port}/`,
+      `https://${loopback}:${server.address().port}/`,
       // Needs to be passed to disable the reject unauthorized
       {
         method: 'GET',
@@ -114,8 +121,5 @@ describe('cookies', () => {
 
     t.assert.deepStrictEqual(response.headers.getSetCookie(), ['Space=Cat; Secure; HttpOnly'])
     t.assert.strictEqual(await response.text(), 'test')
-
-    await client.close()
-    await new Promise((resolve, reject) => server.close(err => err ? reject(err) : resolve()))
   })
 })
